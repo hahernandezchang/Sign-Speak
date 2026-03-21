@@ -5,6 +5,7 @@ import urllib.request
 import os
 import torch
 import json
+from typing import Any, cast
 
 # ─────────────────────────────────────────────
 #  MODERN MEDIAPIPE IMPORTS
@@ -17,7 +18,10 @@ VisionRunningMode     = mp.tasks.vision.RunningMode
 # ─────────────────────────────────────────────
 #  AUTO-DOWNLOAD MEDIAPIPE MODEL
 # ─────────────────────────────────────────────
-MODEL_PATH = "hand_landmarker.task"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(SCRIPT_DIR, "hand_landmarker.task")
+CLASSIFIER_PATH = os.path.join(SCRIPT_DIR, "asl_classifier.pt")
+LABEL_MAP_PATH = os.path.join(SCRIPT_DIR, "asl_label_map.json")
 if not os.path.exists(MODEL_PATH):
     print("Downloading hand landmark model...")
     url = (
@@ -34,6 +38,9 @@ WRIST      = 0
 MIDDLE_MCP = 9
 THUMB_TIP  = 4
 INDEX_TIP  = 8
+INDEX_PIP  = 6
+MIDDLE_PIP = 10
+MIDDLE_TIP = 12
 
 HAND_CONNECTIONS = [
     (0,1),(1,2),(2,3),(3,4),
@@ -97,18 +104,27 @@ class ASLNet(torch.nn.Module):
 #  LOAD TRAINED CLASSIFIER
 # ─────────────────────────────────────────────
 _model     = None
-_label_map = None
+_label_map = {}
 
-if os.path.exists("asl_classifier.pt") and os.path.exists("asl_label_map.json"):
-    _ckpt      = torch.load("asl_classifier.pt", map_location="cpu")
-    _label_map = json.load(open("asl_label_map.json"))
+if os.path.exists(CLASSIFIER_PATH) and os.path.exists(LABEL_MAP_PATH):
+    _ckpt_obj = torch.load(CLASSIFIER_PATH, map_location="cpu")
+    if not isinstance(_ckpt_obj, dict):
+        raise RuntimeError("Invalid classifier checkpoint format.")
+    _ckpt = cast(dict[str, Any], _ckpt_obj)
+
+    with open(LABEL_MAP_PATH, "r") as f:
+        label_map_obj = json.load(f)
+    if not isinstance(label_map_obj, dict):
+        raise RuntimeError("Invalid ASL label map format.")
+    _label_map = {str(k): str(v) for k, v in label_map_obj.items()}
+
     _model     = ASLNet(
-        _ckpt["input_size"],
-        _ckpt["hidden_sizes"],
-        _ckpt["num_classes"],
-        _ckpt["dropout"],
+        int(_ckpt["input_size"]),
+        list(_ckpt["hidden_sizes"]),
+        int(_ckpt["num_classes"]),
+        float(_ckpt["dropout"]),
     )
-    _model.load_state_dict(_ckpt["model_state"])
+    _model.load_state_dict(cast(dict[str, Any], _ckpt["model_state"]))
     _model.eval()
     print(f"Classifier loaded — {_ckpt['num_classes']} classes: {list(_label_map.values())}")
 else:
@@ -116,15 +132,46 @@ else:
     print("Run python train.py after collecting data.")
 
 
-def classify_asl(position: list[float], velocity: list[float]) -> str | None:
-    """Takes the 63-float position AND 63-float velocity → returns predicted letter."""
-    if _model is None:
+def classify_asl(position: list[float], velocity: list[float]) -> tuple[str, float] | None:
+    """Returns (predicted_letter, confidence) from 126-float features."""
+    model = _model
+    label_map = _label_map
+    if model is None or not label_map:
         return None
     features = position + velocity                          # 126 floats
     x = torch.tensor([features], dtype=torch.float32)
     with torch.no_grad():
-        idx = _model(x).argmax(1).item()
-    return _label_map[str(idx)]
+        logits = model(x)
+        probs = torch.softmax(logits, dim=1)
+        idx = probs.argmax(1).item()
+        confidence = float(probs[0, idx].item())
+    predicted = label_map.get(str(idx))
+    if predicted is None:
+        return None
+    return predicted, confidence
+
+
+def refine_uv_prediction(prediction: str, hand_landmarks) -> tuple[str, float]:
+    """
+    Uses a simple geometric rule for U vs V.
+    U: index/middle fingertips close together.
+    V: index/middle fingertips are spread apart.
+    """
+    if prediction not in {"u", "v"}:
+        return prediction, 0.0
+
+    i_tip = hand_landmarks[INDEX_TIP]
+    m_tip = hand_landmarks[MIDDLE_TIP]
+    i_pip = hand_landmarks[INDEX_PIP]
+    m_pip = hand_landmarks[MIDDLE_PIP]
+
+    tip_dist = float(np.linalg.norm([i_tip.x - m_tip.x, i_tip.y - m_tip.y, i_tip.z - m_tip.z]))
+    pip_dist = float(np.linalg.norm([i_pip.x - m_pip.x, i_pip.y - m_pip.y, i_pip.z - m_pip.z])) + 1e-6
+    spread_ratio = tip_dist / pip_dist
+
+    if spread_ratio >= 1.45:
+        return "v", spread_ratio
+    return "u", spread_ratio
 
 
 # ─────────────────────────────────────────────
@@ -218,8 +265,10 @@ def main():
                     draw_motion_meter(frame, velocity)
 
                     # classify
-                    prediction = classify_asl(norm, velocity)
-                    if prediction:
+                    prediction_result = classify_asl(norm, velocity)
+                    if prediction_result:
+                        prediction, confidence = prediction_result
+                        prediction, uv_ratio = refine_uv_prediction(prediction, hand_landmarks)
                         cv2.putText(
                             frame,
                             f"ASL: {prediction.upper()}",
@@ -227,6 +276,21 @@ def main():
                             cv2.FONT_HERSHEY_SIMPLEX, 2.2,
                             (0, 255, 255), 4, cv2.LINE_AA,
                         )
+                        cv2.putText(
+                            frame,
+                            f"conf {confidence:.2f}",
+                            (30, 235 + hand_idx * 70),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (170, 170, 170), 1, cv2.LINE_AA,
+                        )
+                        if prediction in {"U", "V", "u", "v"}:
+                            cv2.putText(
+                                frame,
+                                f"u/v spread {uv_ratio:.2f}",
+                                (30, 260 + hand_idx * 70),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                                (170, 220, 255), 1, cv2.LINE_AA,
+                            )
 
             # clear velocity buffers for hands that disappeared
             for idx in list(prev_norm.keys()):
@@ -238,7 +302,7 @@ def main():
                         cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 120, 120), 1)
 
             cv2.imshow("ASL Landmark Extractor", frame)
-            if cv2.waitKey(1) & 0xFF == ord("0"):
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
     cap.release()
