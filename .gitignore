@@ -9,5 +9,29 @@ venv/
 .venv/
 env/
 .env/
+.env
 
 .vscode/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Local collected datasets (do not commit personal/raw captures)
+asl_data.csv
+data/asl_data.csv
+data/asl_alphabet_data.csv
+data/asl_words_data.csv
+data/asl_data_legacy_127cols.csv
+
+# Locally trained model artifacts
+models/*_classifier.pt
+models/*_label_map.json
