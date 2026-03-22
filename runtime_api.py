@@ -50,7 +50,7 @@ class RuntimeStartRequest(BaseModel):
 
 
 class RuntimeCommandRequest(BaseModel):
-    action: str = Field(pattern="^(clear_phrase|clear_text|clear_transcript|speak)$")
+    action: str = Field(pattern="^(clear_phrase|clear_text|clear_transcript|speak|add_space|delete_char)$")
 
 
 class RuntimeState(BaseModel):
@@ -251,23 +251,20 @@ class RuntimeWorker:
 
     @staticmethod
     def _build_transcript_text(entries: list[tuple[str, str]]) -> str:
-        parts: list[str] = []
-        letter_run: list[str] = []
-
-        def flush_letters() -> None:
-            nonlocal letter_run
-            if letter_run:
-                parts.append("".join(letter_run))
-                letter_run = []
+        # Keep spacing intent exact for manual SPACE and mixed letter/word streams.
+        text_parts: list[str] = []
 
         for kind, value in entries:
             if kind == "letter":
-                letter_run.append(value)
-            else:
-                flush_letters()
-                parts.append(value)
-        flush_letters()
-        return " ".join([p for p in parts if p]).strip()
+                text_parts.append(value)
+            elif kind == "space":
+                text_parts.append(" ")
+            elif kind == "word":
+                if text_parts and not text_parts[-1].endswith((" ", "\t", "\n")):
+                    text_parts.append(" ")
+                text_parts.append(value)
+
+        return "".join(text_parts)
 
     @staticmethod
     def _build_speak_tokens(entries: list[tuple[str, str]]) -> list[str]:
@@ -283,11 +280,31 @@ class RuntimeWorker:
         for kind, value in entries:
             if kind == "letter":
                 letter_run.append(value)
+            elif kind == "space":
+                flush_letters()
             else:
                 flush_letters()
                 tokens.append(value)
         flush_letters()
         return [token for token in tokens if token]
+
+    @staticmethod
+    def _sync_previews_from_entries(
+        entries: list[tuple[str, str]],
+        text_preview: deque[str],
+        phrase_preview: deque[str],
+    ) -> None:
+        text_preview.clear()
+        phrase_preview.clear()
+        for kind, value in entries:
+            if kind in ("letter", "space"):
+                text_preview.append(value if kind == "letter" else " ")
+            elif kind == "word":
+                phrase_preview.append(value)
+
+    @staticmethod
+    def _remove_entries_by_kind(entries: list[tuple[str, str]], allowed_kinds: set[str]) -> None:
+        entries[:] = [item for item in entries if item[0] not in allowed_kinds]
 
     def _run_loop(self) -> None:
         config = self._config
@@ -458,11 +475,30 @@ class RuntimeWorker:
 
                     for command in self._drain_commands():
                         if command == "clear_phrase":
-                            phrase_preview.clear()
+                            self._remove_entries_by_kind(transcript_entries, {"word"})
+                            self._sync_previews_from_entries(transcript_entries, text_preview, phrase_preview)
                         elif command == "clear_text":
-                            text_preview.clear()
+                            self._remove_entries_by_kind(transcript_entries, {"letter", "space"})
+                            self._sync_previews_from_entries(transcript_entries, text_preview, phrase_preview)
                         elif command == "clear_transcript":
                             transcript_entries.clear()
+                            text_preview.clear()
+                            phrase_preview.clear()
+                        elif command == "add_space":
+                            # SPACE should be visible in text/transcript and removable with BACKSPACE.
+                            if wants_letters:
+                                text_preview.append(" ")
+                                transcript_entries.append(("space", " "))
+                        elif command == "delete_char":
+                            # In hybrid mode remove the latest committed token; in single mode remove matching kind.
+                            if transcript_entries:
+                                if wants_letters and wants_words:
+                                    transcript_entries.pop()
+                                elif wants_letters and transcript_entries[-1][0] in ("letter", "space"):
+                                    transcript_entries.pop()
+                                elif wants_words and transcript_entries[-1][0] == "word":
+                                    transcript_entries.pop()
+                                self._sync_previews_from_entries(transcript_entries, text_preview, phrase_preview)
                         elif command == "speak":
                             if not voice_enabled:
                                 runtime_error = "Voice is disabled for this session. Restart with voice enabled."

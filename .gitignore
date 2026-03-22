@@ -35,5 +35,3 @@ data/asl_words_data.csv
 data/asl_data_legacy_127cols.csv
 
 # Locally trained model artifacts
-models/*_classifier.pt
-models/*_label_map.json
