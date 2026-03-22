@@ -312,13 +312,13 @@ export default function App() {
     >
       <div
         style={{
-          minHeight: "100vh",
+          minHeight: "auto",
           padding: "48px 56px",
           display: "flex",
           flexDirection: "column",
-          justifyContent: "space-between",
+          justifyContent: "flex-start",
           boxSizing: "border-box",
-          gap: "22px",
+          gap: "50px",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "stretch", gap: "40px", flexWrap: "wrap" }}>
@@ -509,8 +509,8 @@ export default function App() {
 
       <div
         style={{
-          minHeight: "100vh",
-          padding: "72px 56px",
+          minHeight: "auto",
+          padding: "28px 56px 72px",
           display: "flex",
           gap: "34px",
           boxSizing: "border-box",
