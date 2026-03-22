@@ -15,6 +15,11 @@ export default function App() {
   const [source, setSource] = useState("0");
   const [voice, setVoice] = useState(false);
   const [streamStatus, setStreamStatus] = useState("connecting");
+  const [speed, setSpeed] = useState(50);
+  const [selectedVoice, setSelectedVoice] = useState(1);
+  const [dotGrid, setDotGrid] = useState(() =>
+    Array.from({ length: 900 }, () => Math.random() > 0.95)
+  );
 
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -22,6 +27,18 @@ export default function App() {
   const activeRef = useRef(true);
 
   const running = runtime?.running ?? false;
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDotGrid((prevGrid) =>
+        prevGrid.map((isActive) => {
+          if (isActive) return Math.random() > 0.4;
+          return Math.random() < 0.01;
+        })
+      );
+    }, 150);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -159,107 +176,366 @@ export default function App() {
     return `${API_BASE}/frame?seq=${seq}`;
   }, [runtime?.seq]);
 
+  const darkBackground = "#111";
+  const grayBox = "#d3d3d3";
+
+  const outlinedButtonStyle = {
+    border: "1px solid white",
+    background: "transparent",
+    color: "white",
+    padding: "10px 18px",
+    cursor: "pointer",
+    fontFamily: "monospace",
+    textTransform: "uppercase",
+    fontSize: "1rem",
+    fontWeight: "bold",
+    letterSpacing: "1px",
+    borderRadius: "8px",
+  };
+
   return (
-    <main className="page-shell">
-      <section className="hero-card">
-        <h1>Sign-Speak Live Console</h1>
-        <p>
-          React + Vite interface powered by your Python runtime. Start recognition, then monitor
-          live tokens, camera preview, phrase buffer, and spelled text in real time.
-        </p>
-        <div className="status-row">
-          <span className={`status-badge ${streamStatus}`}>stream: {streamStatus}</span>
-          <span className={`status-badge ${running ? "running" : "stopped"}`}>
-            runtime: {running ? "running" : "stopped"}
-          </span>
-          <span className={`status-badge ${runtime?.speaking ? "speaking" : "idle"}`}>
-            voice: {runtime?.speaking ? "speaking" : voice ? "ready" : "off"}
-          </span>
-        </div>
-        <div className="control-row">
-          <label>
-            Mode
-            <select value={mode} onChange={(e) => setMode(e.target.value)} disabled={running}>
-              <option value="letters">letters</option>
-              <option value="words">words</option>
-              <option value="hybrid">hybrid</option>
-            </select>
-          </label>
-          <label>
-            Source
-            <input value={source} onChange={(e) => setSource(e.target.value)} disabled={running} />
-          </label>
-          <label className="voice-toggle">
-            <input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} disabled={running} />
-            Enable voice
-          </label>
-          <button type="button" className="btn-primary" onClick={startRuntime} disabled={running}>
-            Start
-          </button>
-          <button type="button" className="btn-ghost" onClick={stopRuntime} disabled={!running}>
-            Stop
-          </button>
-        </div>
-        {error ? <p className="error-text">{error}</p> : null}
-      </section>
-
-      <section className="workspace">
-        <article className="panel preview-panel">
-          <div className="preview-header">
-            <h2>Live Camera Preview</h2>
-            <button type="button" className="btn-primary" onClick={() => sendCommand("speak")} disabled={!running || !voice}>
-              Speak
-            </button>
-          </div>
-          {running ? <img src={frameUrl} alt="live camera" className="preview" /> : <p className="output">Runtime is stopped.</p>}
-        </article>
-
-        <div className="right-column">
-          <article className="panel status-panel">
-            <h2>Status</h2>
-            <p>
-              Active mode: <strong>{runtime?.mode ?? "-"}</strong>
-            </p>
-            <p>
-              Last token: <strong>{runtime?.chosen_label ?? "-"}</strong>
-            </p>
-            <p>
-              Token channel: <strong>{runtime?.chosen_mode ?? "none"}</strong>
-            </p>
-            <div className="meter-wrap">
-              <span>Confidence</span>
-              <div className="meter">
-                <div className="meter-fill" style={{ width: `${confidencePct}%` }} />
-              </div>
-              <span>{formatConf(runtime?.chosen_conf)}</span>
+    <div
+      style={{
+        backgroundColor: darkBackground,
+        color: "white",
+        fontFamily: "monospace",
+        boxSizing: "border-box",
+      }}
+    >
+      <div
+        style={{
+          minHeight: "100vh",
+          padding: "48px 56px",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          boxSizing: "border-box",
+          gap: "42px",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "40px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "20px", flex: 1 }}>
+            <div
+              style={{
+                color: "#666",
+                fontSize: "1.4rem",
+                fontWeight: "bold",
+                letterSpacing: "4px",
+              }}
+            >
+              SIGN-SPEAK CONSOLE
             </div>
-          </article>
 
-          <article className="panel text-panel">
-            <h2>Live Letter Capture (temporary)</h2>
-            <p className="output">{runtime?.text || "(none)"}</p>
-            <h2>Live Word Buffer (temporary)</h2>
-            <p className="output">{runtime?.phrase || "(empty)"}</p>
-            <div className="inline-actions">
-              <button type="button" className="btn-ghost" onClick={() => sendCommand("clear_text")} disabled={!running}>
+            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+              <button type="button" style={outlinedButtonStyle}>
+                Adjust Sign Speed
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={speed}
+                onChange={(e) => setSpeed(Number(e.target.value))}
+                style={{ accentColor: "white", width: "210px" }}
+              />
+              <span style={{ color: "#bdbdbd" }}>{speed}</span>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+              <button type="button" style={outlinedButtonStyle}>
+                Pick A Voice
+              </button>
+              {[1, 2, 3, 4].map((num) => (
+                <button
+                  type="button"
+                  key={num}
+                  onClick={() => setSelectedVoice(num)}
+                  style={{
+                    ...outlinedButtonStyle,
+                    backgroundColor: selectedVoice === num ? "white" : "transparent",
+                    color: selectedVoice === num ? "black" : "white",
+                    borderRadius: "50%",
+                    padding: "11px 16px",
+                    fontSize: "1rem",
+                  }}
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", alignItems: "flex-end", gap: "12px", flexWrap: "wrap" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "6px", color: "#b8b8b8" }}>
+                Mode
+                <select
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value)}
+                  disabled={running}
+                  style={{ ...outlinedButtonStyle, textTransform: "none", minWidth: "120px" }}
+                >
+                  <option value="letters">letters</option>
+                  <option value="words">words</option>
+                  <option value="hybrid">hybrid</option>
+                </select>
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: "6px", color: "#b8b8b8" }}>
+                Source
+                <input
+                  value={source}
+                  onChange={(e) => setSource(e.target.value)}
+                  disabled={running}
+                  style={{ ...outlinedButtonStyle, textTransform: "none", minWidth: "90px" }}
+                />
+              </label>
+
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  border: "1px solid #666",
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={voice}
+                  onChange={(e) => setVoice(e.target.checked)}
+                  disabled={running}
+                />
+                Enable voice
+              </label>
+            </div>
+
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={startRuntime}
+                disabled={running}
+                style={{ ...outlinedButtonStyle, fontSize: "1.2rem", padding: "14px 28px", opacity: running ? 0.5 : 1 }}
+              >
+                Start
+              </button>
+              <button
+                type="button"
+                onClick={stopRuntime}
+                disabled={!running}
+                style={{ ...outlinedButtonStyle, fontSize: "1.2rem", padding: "14px 28px", opacity: !running ? 0.5 : 1 }}
+              >
+                Stop
+              </button>
+              <button
+                type="button"
+                onClick={() => sendCommand("speak")}
+                disabled={!running || !voice}
+                style={{
+                  ...outlinedButtonStyle,
+                  backgroundColor: "white",
+                  color: "black",
+                  fontSize: "1.2rem",
+                  padding: "14px 24px",
+                  opacity: !running || !voice ? 0.5 : 1,
+                }}
+              >
+                Speak
+              </button>
+            </div>
+
+            <div style={{ color: error ? "#ff7f8d" : "#bdbdbd", fontSize: "0.95rem", minHeight: "1.2rem" }}>
+              {error ||
+                `stream: ${streamStatus} | runtime: ${running ? "running" : "stopped"} | voice: ${
+                  runtime?.speaking ? "speaking" : voice ? "ready" : "off"
+                }`}
+            </div>
+          </div>
+
+          <div
+            style={{
+              textAlign: "right",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              width: "42%",
+              minWidth: "300px",
+            }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(30, 6px)", gap: "6px", marginBottom: "20px" }}>
+              {dotGrid.map((isActive, i) => (
+                <div
+                  key={i}
+                  style={{
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "50%",
+                    transition: "background-color 0.3s ease, box-shadow 0.3s ease",
+                    backgroundColor: isActive ? "white" : "#222",
+                    boxShadow: isActive ? "0 0 10px rgba(255,255,255,0.8)" : "none",
+                  }}
+                />
+              ))}
+            </div>
+            <p style={{ margin: 0, fontSize: "1.05rem", color: "#999", lineHeight: "1.6", maxWidth: "410px" }}>
+              Real-time ASL recognition with live camera preview, confidence meter, phrase buffer,
+              and transcript output.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ textAlign: "center", paddingBottom: "8px" }}>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: "5rem",
+              textTransform: "uppercase",
+              fontWeight: "lighter",
+              letterSpacing: "12px",
+              WebkitTextStroke: "2px white",
+              color: darkBackground,
+            }}
+          >
+            SIGN - SPEAK
+          </h1>
+        </div>
+      </div>
+
+      <hr style={{ border: "none", borderTop: "2px solid #333", margin: "0 56px" }} />
+
+      <div
+        style={{
+          minHeight: "100vh",
+          padding: "72px 56px",
+          display: "flex",
+          gap: "34px",
+          boxSizing: "border-box",
+          flexWrap: "wrap",
+        }}
+      >
+        <div
+          style={{
+            flex: "1.5 1 620px",
+            backgroundColor: grayBox,
+            borderRadius: "20px",
+            padding: "24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
+          }}
+        >
+          <p style={{ color: "#444", margin: 0, textTransform: "uppercase", fontSize: "1.05rem", fontWeight: "bold", letterSpacing: "2px" }}>
+            Live Camera Preview
+          </p>
+          {running ? (
+            <img
+              src={frameUrl}
+              alt="live camera"
+              style={{
+                width: "100%",
+                borderRadius: "14px",
+                border: "1px solid #a8a8a8",
+                background: "#9d9d9d",
+                aspectRatio: "4/3",
+                objectFit: "cover",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                flexGrow: 1,
+                minHeight: "360px",
+                borderRadius: "14px",
+                border: "1px dashed #777",
+                display: "grid",
+                placeItems: "center",
+                color: "#6b6b6b",
+                fontSize: "1.15rem",
+                textTransform: "uppercase",
+                letterSpacing: "2px",
+              }}
+            >
+              Runtime Stopped
+            </div>
+          )}
+        </div>
+
+        <div style={{ flex: "1 1 420px", display: "flex", flexDirection: "column", gap: "28px" }}>
+          <div
+            style={{
+              flex: 1,
+              backgroundColor: grayBox,
+              borderRadius: "20px",
+              padding: "28px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+            }}
+          >
+            <p style={{ color: "#444", margin: 0, textTransform: "uppercase", fontSize: "1.05rem", fontWeight: "bold", letterSpacing: "2px" }}>
+              Live Capture (temporary)
+            </p>
+            <p style={{ color: "#111", margin: 0, fontWeight: "bold" }}>
+              last token: {runtime?.chosen_label ?? "-"} | channel: {runtime?.chosen_mode ?? "none"}
+            </p>
+            <p style={{ color: "#222", margin: 0 }}>confidence: {formatConf(runtime?.chosen_conf)}</p>
+            <div style={{ height: "10px", border: "1px solid #888", borderRadius: "999px", overflow: "hidden", background: "#f2f2f2" }}>
+              <div
+                style={{
+                  height: "100%",
+                  width: `${confidencePct}%`,
+                  background: "linear-gradient(90deg, #44d4b0, #95ffe0)",
+                  transition: "width 120ms linear",
+                }}
+              />
+            </div>
+            <div style={{ color: "black", fontSize: "1.3rem", lineHeight: 1.35, minHeight: "3.4rem", border: "1px dashed #9d9d9d", borderRadius: "10px", padding: "10px" }}>
+              {runtime?.text || "(none)"}
+            </div>
+            <div style={{ color: "#2f2f2f", fontSize: "1.1rem", minHeight: "2.2rem", border: "1px dashed #9d9d9d", borderRadius: "10px", padding: "10px" }}>
+              {runtime?.phrase || "(empty)"}
+            </div>
+            <div style={{ marginTop: "auto", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => sendCommand("clear_text")}
+                disabled={!running}
+                style={{ ...outlinedButtonStyle, color: "#2d2d2d", borderColor: "#7f7f7f", opacity: !running ? 0.5 : 1 }}
+              >
                 Clear Text
               </button>
-              <button type="button" className="btn-ghost" onClick={() => sendCommand("clear_phrase")} disabled={!running}>
+              <button
+                type="button"
+                onClick={() => sendCommand("clear_phrase")}
+                disabled={!running}
+                style={{ ...outlinedButtonStyle, color: "#2d2d2d", borderColor: "#7f7f7f", opacity: !running ? 0.5 : 1 }}
+              >
                 Clear Phrase
               </button>
             </div>
-          </article>
+          </div>
 
-          <article className="panel transcript-panel">
-            <h2>Transcript</h2>
-            <p className="output">{displayTranscript || "(empty)"}</p>
-            <div className="mini-row">
-              <span>pending word: {runtime?.pending_word || "-"}</span>
-              <span>pending char: {runtime?.pending_char || "-"}</span>
-            </div>
-          </article>
+          <div
+            style={{
+              flex: 1,
+              backgroundColor: grayBox,
+              borderRadius: "20px",
+              padding: "28px",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <p style={{ color: "#444", margin: "0 0 12px 0", textTransform: "uppercase", fontSize: "1.05rem", fontWeight: "bold", letterSpacing: "2px" }}>
+              Transcript
+            </p>
+            <p style={{ color: "black", fontSize: "1.4rem", lineHeight: 1.45, margin: 0, minHeight: "5.4rem" }}>
+              {displayTranscript || "TEXT -> SPEECH SHOWN HERE"}
+            </p>
+            <p style={{ marginTop: "auto", marginBottom: 0, fontSize: "0.95rem", color: "#555", fontWeight: "bold" }}>
+              pending word: {runtime?.pending_word || "-"} | pending char: {runtime?.pending_char || "-"}
+            </p>
+          </div>
         </div>
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }
