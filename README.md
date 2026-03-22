@@ -165,3 +165,53 @@ python .\dual_runtime.py --voice --mode hybrid
 5. Train words
 6. Test letters/words/hybrid
 7. Repeat with more data where errors appear
+
+## Web Runtime (React + Vite)
+
+This branch now includes a web stack:
+
+- Python API bridge: `runtime_api.py`
+- React client: `client/`
+
+### 1) Start the API
+
+Install dependencies (once):
+
+```powershell
+python -m pip install -r .\requirements.txt
+```
+
+Run server:
+
+```powershell
+python -m uvicorn runtime_api:app --reload --host 0.0.0.0 --port 8000
+```
+
+### 2) Start the React UI
+
+In a second terminal:
+
+```powershell
+cd .\client
+npm install
+npm run dev
+```
+
+Open:
+
+`http://localhost:5173`
+
+### 3) Use the UI
+
+- Choose `letters`, `words`, or `hybrid`
+- Keep source `0` for default webcam
+- Click Start to begin inference
+- Click Stop to release camera
+- Use `Clear Text`, `Clear Phrase`, and `Speak` for runtime commands
+
+The client streams runtime state from `ws://localhost:8000/stream`.
+
+Additional API endpoints now available:
+
+- `POST /command` with `{"action":"clear_text"|"clear_phrase"|"speak"}`
+- `GET /frame` for latest webcam frame (`image/jpeg`)

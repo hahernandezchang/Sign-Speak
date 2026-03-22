@@ -12,6 +12,8 @@ env/
 .env
 
 .vscode/
+client/node_modules/
+client/dist/
 
 # OS/editor noise
 .DS_Store
