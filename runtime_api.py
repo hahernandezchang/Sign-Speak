@@ -50,7 +50,7 @@ class RuntimeStartRequest(BaseModel):
 
 
 class RuntimeCommandRequest(BaseModel):
-    action: str = Field(pattern="^(clear_phrase|clear_text|speak)$")
+    action: str = Field(pattern="^(clear_phrase|clear_text|clear_transcript|speak)$")
 
 
 class RuntimeState(BaseModel):
@@ -461,6 +461,8 @@ class RuntimeWorker:
                             phrase_preview.clear()
                         elif command == "clear_text":
                             text_preview.clear()
+                        elif command == "clear_transcript":
+                            transcript_entries.clear()
                         elif command == "speak":
                             if not voice_enabled:
                                 runtime_error = "Voice is disabled for this session. Restart with voice enabled."

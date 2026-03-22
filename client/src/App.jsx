@@ -153,6 +153,21 @@ export default function App() {
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       setError(body.detail ?? `Failed to run ${action}.`);
+    } else {
+      // For immediate visual feedback, update local state
+      if (action === "clear_transcript" && runtime) {
+        setRuntime({ ...runtime, transcript: "" });
+      }
+      if (action === "clear_text" && runtime) {
+        setRuntime({ ...runtime, text: "" });
+      }
+      if (action === "clear_phrase" && runtime) {
+        setRuntime({ ...runtime, phrase: "" });
+      }
+      // Small delay to let backend process the command queue
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Then refresh state from server to sync
+      await refreshState();
     }
   }
 
@@ -326,21 +341,6 @@ export default function App() {
               >
                 Stop
               </button>
-              <button
-                type="button"
-                onClick={() => sendCommand("speak")}
-                disabled={!running || !voice}
-                style={{
-                  ...outlinedButtonStyle,
-                  backgroundColor: "white",
-                  color: "black",
-                  fontSize: "1.2rem",
-                  padding: "14px 24px",
-                  opacity: !running || !voice ? 0.5 : 1,
-                }}
-              >
-                Speak
-              </button>
             </div>
 
             <div style={{ color: error ? "#ff7f8d" : "#bdbdbd", fontSize: "0.95rem", minHeight: "1.2rem" }}>
@@ -423,9 +423,26 @@ export default function App() {
             gap: "12px",
           }}
         >
-          <p style={{ color: "#444", margin: 0, textTransform: "uppercase", fontSize: "1.05rem", fontWeight: "bold", letterSpacing: "2px" }}>
-            Live Camera Preview
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
+            <p style={{ color: "#444", margin: 0, textTransform: "uppercase", fontSize: "1.05rem", fontWeight: "bold", letterSpacing: "2px" }}>
+              Live Camera Preview
+            </p>
+            <button
+              type="button"
+              onClick={() => sendCommand("speak")}
+              disabled={!running || !voice}
+              style={{
+                ...outlinedButtonStyle,
+                backgroundColor: "white",
+                color: "black",
+                fontSize: "1rem",
+                padding: "10px 20px",
+                opacity: !running || !voice ? 0.5 : 1,
+              }}
+            >
+              Speak
+            </button>
+          </div>
           {running ? (
             <img
               src={frameUrl}
@@ -530,9 +547,17 @@ export default function App() {
             <p style={{ color: "black", fontSize: "1.4rem", lineHeight: 1.45, margin: 0, minHeight: "5.4rem" }}>
               {displayTranscript || "TEXT -> SPEECH SHOWN HERE"}
             </p>
-            <p style={{ marginTop: "auto", marginBottom: 0, fontSize: "0.95rem", color: "#555", fontWeight: "bold" }}>
+            <p style={{ marginTop: "auto", marginBottom: "12px", fontSize: "0.95rem", color: "#555", fontWeight: "bold" }}>
               pending word: {runtime?.pending_word || "-"} | pending char: {runtime?.pending_char || "-"}
             </p>
+            <button
+              type="button"
+              onClick={() => sendCommand("clear_transcript")}
+              disabled={!running}
+              style={{ ...outlinedButtonStyle, color: "#2d2d2d", borderColor: "#7f7f7f", opacity: !running ? 0.5 : 1 }}
+            >
+              Clear Transcript
+            </button>
           </div>
         </div>
       </div>
